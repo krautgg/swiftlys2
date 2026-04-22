@@ -417,12 +417,12 @@ internal class CoreCommandService
                     var location = plugin.PluginDirectory is { } dir ? Path.Join("(swRoot)", Path.GetRelativePath(rootDirService.GetRoot(), dir)) : string.Empty;
                     _ = sb.AppendLine($"{statusText} | {pluginId}{version} | {author} | {website} | {location}");
                 }
-                var loadErrors = pluginManager.GetPluginLoadErrors();
-                if (loadErrors.Count > 0)
+                var playerListLoadErrors = pluginManager.GetPluginLoadErrors();
+                if (playerListLoadErrors.Count > 0)
                 {
                     _ = sb.AppendLine();
                     _ = sb.AppendLine("Plugin Load Errors:");
-                    foreach (var error in loadErrors)
+                    foreach (var error in playerListLoadErrors)
                     {
                         _ = sb.AppendLine($"  {error.Key}: {error.Value}");
                     }
