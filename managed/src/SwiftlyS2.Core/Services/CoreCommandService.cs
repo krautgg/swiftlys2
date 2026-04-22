@@ -1,6 +1,7 @@
 using System.Runtime;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using Spectre.Console;
 using Microsoft.Extensions.Logging;
 using SwiftlyS2.Shared;
@@ -29,6 +30,22 @@ internal class CoreCommandService
         _ = core.Command.RegisterCommand("sw", OnCommand, true, helpText: "SwiftlyS2 Core Command");
     }
 
+    private void EmitCommandOutput( ICommandContext context, string message, bool asWarning = false )
+    {
+        if (context.IsSentByPlayer)
+        {
+            context.Reply(message);
+        }
+        else if (asWarning)
+        {
+            logger.LogWarning("{Output}", message);
+        }
+        else
+        {
+            logger.LogInformation("{Output}", message);
+        }
+    }
+
     private void OnCommand( ICommandContext context )
     {
         void ShowPlayerList()
@@ -37,7 +54,7 @@ internal class CoreCommandService
                 $"Connected players: {core.PlayerManager.PlayerCount}/{core.Engine.GlobalVars.MaxClients}",
                 ..core.PlayerManager.GetAllValidPlayers().Select(player => $"{player.PlayerID}. {player.Controller?.PlayerName}{(player.IsFakeClient ? " (BOT)" : "")} (steamid={player.SteamID})")
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         void ShowServerStatus()
@@ -58,7 +75,7 @@ internal class CoreCommandService
                 $"Players: {core.PlayerManager.PlayerCount}/{core.Engine.GlobalVars.MaxClients}",
                 $"Map: {core.Engine.GlobalVars.MapName.Value}",
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         void ShowVersionInfo()
@@ -71,7 +88,7 @@ internal class CoreCommandService
                 $"SwiftlyS2 .NET Version: {RuntimeInformation.FrameworkDescription}",
                 $"GitHub URL: https://github.com/swiftly-solution/swiftlys2"
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         void ShowGarbageCollectionInfo()
@@ -84,7 +101,7 @@ internal class CoreCommandService
                 ..Enumerable.Range(0, GC.MaxGeneration + 1).Select(i => $"    - Generation {i} Collection Count: {GC.CollectionCount(i)}"),
                 $"  - Latency Mode: {GCSettings.LatencyMode}"
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         void ShowCredits()
@@ -95,7 +112,7 @@ internal class CoreCommandService
                 "Website: https://swiftlys2.net/",
                 "GitHub: https://github.com/swiftly-solution/swiftlys2"
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         bool RequireConsoleAccess()
@@ -110,11 +127,6 @@ internal class CoreCommandService
 
         try
         {
-            if (context.IsSentByPlayer)
-            {
-                return;
-            }
-
             var args = context.Args;
             if (args.Length == 0)
             {
@@ -172,25 +184,32 @@ internal class CoreCommandService
         }
     }
 
-    private static void ShowHelp( ICommandContext context )
+    private void ShowHelp( ICommandContext context )
     {
+        if (context.IsSentByPlayer)
+        {
+            context.Reply(string.Join(Environment.NewLine, [
+                "credits              List Swiftly credits",
+                "help                 Show the help for Swiftly Commands",
+                "list                 Show the list of online players",
+                "status               Show the status of the server",
+                "version              Display Swiftly version",
+            ]));
+            return;
+        }
         var table = new Table()
             .AddColumn("Command").AddColumn("Description")
             .AddRow("credits", "List Swiftly credits")
             .AddRow("help", "Show the help for Swiftly Commands")
             .AddRow("list", "Show the list of online players")
-            .AddRow("status", "Show the status of the server");
-        if (!context.IsSentByPlayer)
-        {
-            _ = table
-                .AddRow("cmds", "List all plugin commands")
-                .AddRow("confilter", "Console Filter Menu")
-                .AddRow("plugins", "Plugin Management Menu")
-                .AddRow("gc", "Show garbage collection information on managed")
-                .AddRow("profiler", "Profiler Menu")
-                .AddRow("translations", "Translations Menu");
-        }
-        _ = table.AddRow("version", "Display Swiftly version");
+            .AddRow("status", "Show the status of the server")
+            .AddRow("cmds", "List all plugin commands")
+            .AddRow("confilter", "Console Filter Menu")
+            .AddRow("plugins", "Plugin Management Menu")
+            .AddRow("gc", "Show garbage collection information on managed")
+            .AddRow("profiler", "Profiler Menu")
+            .AddRow("translations", "Translations Menu")
+            .AddRow("version", "Display Swiftly version");
         AnsiConsole.Write(table);
     }
 
@@ -198,6 +217,11 @@ internal class CoreCommandService
     {
         void ShowTranslationsHelp()
         {
+            if (context.IsSentByPlayer)
+            {
+                context.Reply("reload                Reload all translations");
+                return;
+            }
             var table = new Table()
                 .AddColumn("Command")
                 .AddColumn("Description")
@@ -209,7 +233,7 @@ internal class CoreCommandService
         {
             pluginManager.RegenerateTranslations();
 
-            logger.LogInformation("Succesfully reloaded the translations");
+            EmitCommandOutput(context, "Succesfully reloaded the translations");
         }
 
         var args = context.Args;
@@ -225,7 +249,7 @@ internal class CoreCommandService
                 ReloadTranslations();
                 break;
             default:
-                logger.LogWarning("Unknown command");
+                EmitCommandOutput(context, "Unknown command", asWarning: true);
                 break;
         }
     }
@@ -234,6 +258,16 @@ internal class CoreCommandService
     {
         void ShowConfilterHelp()
         {
+            if (context.IsSentByPlayer)
+            {
+                context.Reply(string.Join(Environment.NewLine, [
+                    "enable               Enable console filtering",
+                    "disable              Disable console filtering",
+                    "status               Show the status of the console filter",
+                    "reload               Reload console filter configuration",
+                ]));
+                return;
+            }
             var table = new Table()
                 .AddColumn("Command")
                 .AddColumn("Description")
@@ -250,7 +284,7 @@ internal class CoreCommandService
             {
                 core.ConsoleOutput.ToggleFilter();
             }
-            logger.LogInformation("Console filtering has been enabled.");
+            EmitCommandOutput(context, "Console filtering has been enabled.");
         }
 
         void DisableFilter()
@@ -259,7 +293,7 @@ internal class CoreCommandService
             {
                 core.ConsoleOutput.ToggleFilter();
             }
-            logger.LogInformation("Console filtering has been disabled.");
+            EmitCommandOutput(context, "Console filtering has been disabled.");
         }
 
         void ShowFilterStatus()
@@ -270,13 +304,13 @@ internal class CoreCommandService
                 "Below are some statistics for the filtering process:",
                 core.ConsoleOutput.GetCounterText()
             ]);
-            logger.LogInformation("{Output}", output);
+            EmitCommandOutput(context, output);
         }
 
         void ReloadFilter()
         {
             core.ConsoleOutput.ReloadFilterConfiguration();
-            logger.LogInformation("Console filter configuration reloaded.");
+            EmitCommandOutput(context, "Console filter configuration reloaded.");
         }
 
         var args = context.Args;
@@ -301,7 +335,7 @@ internal class CoreCommandService
                 ReloadFilter();
                 break;
             default:
-                logger.LogWarning("Unknown command");
+                EmitCommandOutput(context, "Unknown command", asWarning: true);
                 break;
         }
     }
@@ -311,12 +345,24 @@ internal class CoreCommandService
         var args = context.Args;
         if (args.Length == 1)
         {
-            var table = new Table().AddColumn("Command").AddColumn("Description")
-                .AddRow("enable", "Enable the profiler")
-                .AddRow("disable", "Disable the profiler")
-                .AddRow("status", "Show the status of the profiler")
-                .AddRow("save", "Save the profiler data to a file");
-            AnsiConsole.Write(table);
+            if (context.IsSentByPlayer)
+            {
+                context.Reply(string.Join(Environment.NewLine, [
+                    "enable               Enable the profiler",
+                    "disable              Disable the profiler",
+                    "status               Show the status of the profiler",
+                    "save                 Save the profiler data to a file",
+                ]));
+            }
+            else
+            {
+                var table = new Table().AddColumn("Command").AddColumn("Description")
+                    .AddRow("enable", "Enable the profiler")
+                    .AddRow("disable", "Disable the profiler")
+                    .AddRow("status", "Show the status of the profiler")
+                    .AddRow("save", "Save the profiler data to a file");
+                AnsiConsole.Write(table);
+            }
             return;
         }
 
@@ -324,14 +370,14 @@ internal class CoreCommandService
         {
             case "enable":
                 profileService.Enable();
-                logger.LogInformation("The profiler has been enabled.");
+                EmitCommandOutput(context, "The profiler has been enabled.");
                 break;
             case "disable":
                 profileService.Disable();
-                logger.LogInformation("The profiler has been disabled.");
+                EmitCommandOutput(context, "The profiler has been disabled.");
                 break;
             case "status":
-                logger.LogInformation("Profiler is currently {Status}.", profileService.IsEnabled() ? "enabled" : "disabled");
+                EmitCommandOutput(context, $"Profiler is currently {(profileService.IsEnabled() ? "enabled" : "disabled")}.");
                 break;
             case "save":
                 var pluginId = args.Length >= 3 ? args[2] : "core";
@@ -346,10 +392,10 @@ internal class CoreCommandService
                 var filePath = Path.Combine(profilerDir, fileName);
 
                 File.WriteAllText(filePath, profileService.GenerateJSONPerformance(args.Length >= 3 ? args[2] : string.Empty));
-                logger.LogInformation("Profile saved to {FilePath}.", filePath);
+                EmitCommandOutput(context, $"Profile saved to {filePath}.");
                 break;
             default:
-                logger.LogWarning("Unknown command");
+                EmitCommandOutput(context, "Unknown command", asWarning: true);
                 break;
         }
     }
@@ -358,6 +404,32 @@ internal class CoreCommandService
     {
         void ShowPluginList()
         {
+            if (context.IsSentByPlayer)
+            {
+                var sb = new StringBuilder();
+                foreach (var plugin in pluginManager.GetPlugins())
+                {
+                    var pluginId = plugin.Metadata?.Id ?? "<Unknown>";
+                    var version = plugin.Metadata?.Version is { } v ? $" {v}" : string.Empty;
+                    var statusText = GetColoredStatus(plugin.Status);
+                    var author = plugin.Metadata?.Author ?? "Anonymous";
+                    var website = plugin.Metadata?.Website ?? string.Empty;
+                    var location = plugin.PluginDirectory is { } dir ? Path.Join("(swRoot)", Path.GetRelativePath(rootDirService.GetRoot(), dir)) : string.Empty;
+                    _ = sb.AppendLine($"{statusText} | {pluginId}{version} | {author} | {website} | {location}");
+                }
+                var loadErrors = pluginManager.GetPluginLoadErrors();
+                if (loadErrors.Count > 0)
+                {
+                    _ = sb.AppendLine();
+                    _ = sb.AppendLine("Plugin Load Errors:");
+                    foreach (var error in loadErrors)
+                    {
+                        _ = sb.AppendLine($"  {error.Key}: {error.Value}");
+                    }
+                }
+                context.Reply(sb.ToString().TrimEnd());
+                return;
+            }
             var table = new Table()
                 .AddColumn("Status")
                 .AddColumn("PluginId (ver.)")
@@ -396,6 +468,16 @@ internal class CoreCommandService
 
         void ShowPluginHelp()
         {
+            if (context.IsSentByPlayer)
+            {
+                context.Reply(string.Join(Environment.NewLine, [
+                    "list                 List all plugins",
+                    "load                 Load a plugin",
+                    "unload               Unload a plugin",
+                    "reload               Reload a plugin",
+                ]));
+                return;
+            }
             var table = new Table()
                 .AddColumn("Command")
                 .AddColumn("Description")
@@ -412,7 +494,14 @@ internal class CoreCommandService
             {
                 return true;
             }
-            logger.LogWarning("Usage: sw plugins {Command} {Usage}", command, usage);
+            if (context.IsSentByPlayer)
+            {
+                context.Reply($"Usage: sw plugins {command} {usage}");
+            }
+            else
+            {
+                logger.LogWarning("Usage: sw plugins {Command} {Usage}", command, usage);
+            }
             return false;
         }
 
@@ -445,69 +534,108 @@ internal class CoreCommandService
             case "load":
                 if (ValidatePluginId(args, "load", "<dllName>"))
                 {
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                     if (pluginManager.GetPluginStatusByDllName(args[2]) == PluginStatus.Loaded)
                     {
-                        logger.LogWarning("Plugin is already loaded: {Format}", args[2]);
-                        Console.WriteLine("\n");
+                        EmitCommandOutput(context, $"Plugin is already loaded: {args[2]}", asWarning: true);
+                        if (!context.IsSentByPlayer)
+                        {
+                            Console.WriteLine("\n");
+                        }
                         break;
                     }
 
                     if (pluginManager.LoadPluginByDllName(args[2], true))
                     {
-                        logger.LogInformation("Loaded plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Loaded plugin: {args[2]}");
                     }
                     else
                     {
-                        logger.LogWarning("Failed to load plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Failed to load plugin: {args[2]}", asWarning: true);
                     }
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                 }
                 break;
             case "unload":
                 if (ValidatePluginId(args, "unload", "<dllName>"))
                 {
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                     if (pluginManager.UnloadPluginByDllName(args[2], true))
                     {
-                        logger.LogInformation("Unloaded plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Unloaded plugin: {args[2]}");
                     }
                     else
                     {
-                        logger.LogWarning("Failed to unload plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Failed to unload plugin: {args[2]}", asWarning: true);
                     }
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                 }
                 break;
             case "reload":
                 if (ValidatePluginId(args, "reload", "<dllName>"))
                 {
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                     if (pluginManager.ReloadPluginByDllName(args[2], true))
                     {
-                        logger.LogInformation("Reloaded plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Reloaded plugin: {args[2]}");
                     }
                     else
                     {
-                        logger.LogWarning("Failed to reload plugin: {Format}", args[2]);
+                        EmitCommandOutput(context, $"Failed to reload plugin: {args[2]}", asWarning: true);
                     }
-                    Console.WriteLine("\n");
+                    if (!context.IsSentByPlayer)
+                    {
+                        Console.WriteLine("\n");
+                    }
                 }
                 break;
             default:
-                logger.LogWarning("Unknown command");
+                EmitCommandOutput(context, "Unknown command", asWarning: true);
                 break;
         }
     }
 
     private void CommandsCommand( ICommandContext context )
     {
-
         var commandsByPlugin = core.Command.GetAllCommandsByPlugin();
 
         if (commandsByPlugin.Count == 0)
         {
-            logger.LogInformation("No commands registered.");
+            EmitCommandOutput(context, "No commands registered.");
+            return;
+        }
+
+        if (context.IsSentByPlayer)
+        {
+            var sb = new StringBuilder();
+            foreach (var pluginEntry in commandsByPlugin.OrderBy(x => x.Key))
+            {
+                var pluginName = pluginEntry.Key;
+                var isFirstRow = true;
+
+                foreach (var command in pluginEntry.Value.OrderBy(x => x.CommandName))
+                {
+                    var perm = string.IsNullOrWhiteSpace(command.Permission) ? "(none)" : command.Permission;
+                    _ = sb.AppendLine($"{(isFirstRow ? pluginName : string.Empty)} | {command.CommandName} | {command.HelpText} | {perm}");
+                    isFirstRow = false;
+                }
+            }
+            context.Reply(sb.ToString().TrimEnd());
             return;
         }
 
